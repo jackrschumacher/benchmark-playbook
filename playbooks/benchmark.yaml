@@ -4,18 +4,22 @@
   gather_facts: yes
   become: yes
   vars:
-    vars:
-      # Target the connecting user's Downloads folder
-      downloads_folder: "/home/{{ ansible_user | default(ansible_env.USER) }}/Downloads"
-
-      # Geekbench variables
-      geekbench_version: "6.5.0"
-      geekbench_url: "https://cdn.geekbench.com/Geekbench-{{ geekbench_version }}-Linux.tar.gz"
-      geekbench_dir: "{{ downloads_folder }}/geekbench"
-
-      # sbc-bench variables
-      sbc_bench_url: "https://raw.githubusercontent.com/ThomasKaiser/sbc-bench/master/sbc-bench.sh"
-      sbc_bench_dir: "{{ downloads_folder }}/sbc-bench"
+    target_user: "{{ ansible_user | default(ansible_facts['user_id']) }}"
+    downloads_folder: "/home/{{ target_user }}/Downloads"
+    
+    geekbench_version: "6.3.0"
+    # Dynamically select the correct URL based on the CPU architecture using modern facts
+    geekbench_url: >-
+      {% if ansible_facts['architecture'] == 'aarch64' %}
+      https://cdn.geekbench.com/Geekbench-{{ geekbench_version }}-LinuxARMPreview.tar.gz
+      {% else %}
+      https://cdn.geekbench.com/Geekbench-{{ geekbench_version }}-Linux.tar.gz
+      {% endif %}
+      
+    geekbench_dir: "{{ downloads_folder }}/geekbench"
+    
+    sbc_bench_url: "https://raw.githubusercontent.com/ThomasKaiser/sbc-bench/master/sbc-bench.sh"
+    sbc_bench_dir: "{{ downloads_folder }}/sbc-bench"
 
   tasks:
     - name: Ensure required base dependencies are installed
@@ -30,21 +34,27 @@
     # ==========================================
     # Task Block 1: Geekbench
     # ==========================================
+    # Clean up the old directory in case it still has the broken x86 files inside
+    - name: Remove old Geekbench directory
+      file:
+        path: "{{ geekbench_dir }}"
+        state: absent
+
     - name: Create Geekbench directory
       file:
         path: "{{ geekbench_dir }}"
         state: directory
-        mode: "0755"
-        owner: "{{ ansible_user | default(ansible_env.USER) }}"
+        mode: '0755'
+        owner: "{{ target_user }}"
 
     - name: Download and extract Geekbench
       unarchive:
         src: "{{ geekbench_url }}"
         dest: "{{ geekbench_dir }}"
         remote_src: yes
-        extra_opts:
+        extra_opts: 
           - --strip-components=1
-        owner: "{{ ansible_user | default(ansible_env.USER) }}"
+        owner: "{{ target_user }}"
 
     - name: Run Geekbench
       command: "./geekbench6"
@@ -65,18 +75,18 @@
       file:
         path: "{{ sbc_bench_dir }}"
         state: directory
-        mode: "0755"
-        owner: "{{ ansible_user | default(ansible_env.USER) }}"
+        mode: '0755'
+        owner: "{{ target_user }}"
 
     - name: Download sbc-bench script
       get_url:
         url: "{{ sbc_bench_url }}"
         dest: "{{ sbc_bench_dir }}/sbc-bench.sh"
-        mode: "0755"
-        owner: "{{ ansible_user | default(ansible_env.USER) }}"
+        mode: '0755'
+        owner: "{{ target_user }}"
 
     - name: Run sbc-bench
-      command: "./sbc-bench.sh"
+      command: "./sbc-bench.sh -r"
       args:
         chdir: "{{ sbc_bench_dir }}"
       register: sbc_bench_result
@@ -94,5 +104,5 @@
       copy:
         content: "{{ sbc_bench_result.stdout }}"
         dest: "{{ sbc_bench_dir }}/sbc_bench_results.txt"
-        owner: "{{ ansible_user | default(ansible_env.USER) }}"
-        mode: "0644"
+        owner: "{{ target_user }}"
+        mode: '0644'
