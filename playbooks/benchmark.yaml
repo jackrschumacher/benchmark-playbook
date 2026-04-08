@@ -1,0 +1,98 @@
+- name: Install benchmarking tools
+  hosts: machines
+  connection: local
+  gather_facts: yes
+  become: yes
+  vars:
+    vars:
+      # Target the connecting user's Downloads folder
+      downloads_folder: "/home/{{ ansible_user | default(ansible_env.USER) }}/Downloads"
+
+      # Geekbench variables
+      geekbench_version: "6.5.0"
+      geekbench_url: "https://cdn.geekbench.com/Geekbench-{{ geekbench_version }}-Linux.tar.gz"
+      geekbench_dir: "{{ downloads_folder }}/geekbench"
+
+      # sbc-bench variables
+      sbc_bench_url: "https://raw.githubusercontent.com/ThomasKaiser/sbc-bench/master/sbc-bench.sh"
+      sbc_bench_dir: "{{ downloads_folder }}/sbc-bench"
+
+  tasks:
+    - name: Ensure required base dependencies are installed
+      package:
+        name:
+          - tar
+          - gzip
+          - curl
+          - wget
+        state: present
+
+    # ==========================================
+    # Task Block 1: Geekbench
+    # ==========================================
+    - name: Create Geekbench directory
+      file:
+        path: "{{ geekbench_dir }}"
+        state: directory
+        mode: "0755"
+        owner: "{{ ansible_user | default(ansible_env.USER) }}"
+
+    - name: Download and extract Geekbench
+      unarchive:
+        src: "{{ geekbench_url }}"
+        dest: "{{ geekbench_dir }}"
+        remote_src: yes
+        extra_opts:
+          - --strip-components=1
+        owner: "{{ ansible_user | default(ansible_env.USER) }}"
+
+    - name: Run Geekbench
+      command: "./geekbench6"
+      args:
+        chdir: "{{ geekbench_dir }}"
+      register: geekbench_result
+      async: 1800
+      poll: 30
+
+    - name: Display Geekbench Results
+      debug:
+        var: geekbench_result.stdout_lines
+
+    # ==========================================
+    # Task Block 2: sbc-bench
+    # ==========================================
+    - name: Create sbc-bench directory
+      file:
+        path: "{{ sbc_bench_dir }}"
+        state: directory
+        mode: "0755"
+        owner: "{{ ansible_user | default(ansible_env.USER) }}"
+
+    - name: Download sbc-bench script
+      get_url:
+        url: "{{ sbc_bench_url }}"
+        dest: "{{ sbc_bench_dir }}/sbc-bench.sh"
+        mode: "0755"
+        owner: "{{ ansible_user | default(ansible_env.USER) }}"
+
+    - name: Run sbc-bench
+      command: "./sbc-bench.sh"
+      args:
+        chdir: "{{ sbc_bench_dir }}"
+      register: sbc_bench_result
+      async: 3600
+      poll: 60
+
+    - name: Display sbc-bench Results
+      debug:
+        var: sbc_bench_result.stdout_lines
+
+    # ==========================================
+    # Task Block 3: Save Output
+    # ==========================================
+    - name: Save sbc-bench results to a text file
+      copy:
+        content: "{{ sbc_bench_result.stdout }}"
+        dest: "{{ sbc_bench_dir }}/sbc_bench_results.txt"
+        owner: "{{ ansible_user | default(ansible_env.USER) }}"
+        mode: "0644"
