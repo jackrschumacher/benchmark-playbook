@@ -7,7 +7,7 @@
     target_user: "{{ ansible_user | default(ansible_facts['user_id']) }}"
     downloads_folder: "/home/{{ target_user }}/Downloads"
     
-    geekbench_version: "6.3.0"
+    geekbench_version: "6.5.0"
     # Dynamically select the correct URL based on the CPU architecture using modern facts
     geekbench_url: >-
       {% if ansible_facts['architecture'] == 'aarch64' %}
